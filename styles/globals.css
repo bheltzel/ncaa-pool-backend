@@ -7,7 +7,7 @@
 
   color-scheme: light dark;
   color: black;
-  background-color: #ffffff;
+  background-color: oklch(0.967 0.003 264.542);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
