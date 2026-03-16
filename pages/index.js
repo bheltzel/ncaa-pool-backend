@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <>
       <Head>
-          <title>March Madness Blocks 2025</title>
+          <title>March Madness Blocks 2026</title>
       </Head>
       <SquarePool/>
     </>

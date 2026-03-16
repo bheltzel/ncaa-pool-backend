@@ -28,13 +28,16 @@ body {
   margin: 0;
   display: flex;
   place-items: center;
-  min-width: 320px;
+  min-width: 0; /* allow shrinking so mobile viewport isn't forced wide */
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: 1.25rem; /* default small; components override with Tailwind */
+  line-height: 1.2;
 }
 
 /* button {
