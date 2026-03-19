@@ -1,6 +1,27 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Board from "@/pages/board";
 import { participants, rowNumbers, colNumbers, rounds, currentRound } from "@/lib/pool-data";
+import squareScoreProbabilities from "@/lib/squareScoreProbabilities.json";
+
+const SQUARE_PCT = squareScoreProbabilities.squarePercent;
+const PCT_MIN = Math.min(...Object.values(SQUARE_PCT));
+const PCT_MAX = Math.max(...Object.values(SQUARE_PCT));
+
+/** Tailwind sky-500 — blue overlay from transparent (t=0) to stronger fill (t=1). */
+const HEAT_BLUE = "14, 165, 233";
+
+function heatmapBackground(t) {
+  const a = t * 0.58;
+  return {
+    backgroundColor: "#ffffff",
+    backgroundImage: `linear-gradient(rgba(${HEAT_BLUE}, ${a}), rgba(${HEAT_BLUE}, ${a}))`,
+  };
+}
+
+function normalizePct(p) {
+  if (PCT_MAX <= PCT_MIN) return 0.5;
+  return (p - PCT_MIN) / (PCT_MAX - PCT_MIN);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -39,14 +60,7 @@ function useLocalStorageState(key, defaultValue) {
     const stored = localStorage.getItem(key);
     if (stored !== null) {
       try {
-        // setState(JSON.parse(stored));
-        const parsed = JSON.parse(stored);
-        // Migration: grid default is true; ignore stored false so users see the grid
-        if (key === "grid" && parsed === false) {
-          localStorage.removeItem(key);
-        } else {
-          setState(parsed);
-        }
+        setState(JSON.parse(stored));
       } catch (e) {
         console.warn(`Error parsing localStorage for key "${key}"`, e);
       }
@@ -63,65 +77,70 @@ function useLocalStorageState(key, defaultValue) {
   return [state, setState, isHydrated];
 }
 
-// ── RoundNav ──────────────────────────────────────────────────────────────────
+// ── Tabs ─────────────────────────────────────────────────────────────────────
 
-const RoundNav = ({ activeRound, setActiveRound, showLeaderboard, setShowLeaderboard, showGrid, setShowGrid }) => (
-  <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-200 rounded-lg">
-    {/* Mobile: select dropdown */}
-    <select
-      className="sm:hidden flex-1 border rounded px-3 py-2 bg-white font-medium"
-      value={activeRound}
-      onChange={(e) => {
-        setActiveRound(Number(e.target.value));
-        setShowLeaderboard(false);
-      }}
-    >
-      {rounds.map((round, index) => (
-        <option key={index} value={index}>{round}</option>
-      ))}
-    </select>
+const TABS = ["Scores", "Blocks", "Leaderboard"];
 
-    {/* Desktop: individual buttons */}
-    <div className="hidden sm:flex flex-wrap gap-2">
-      {rounds.map((round, index) => (
-        <button
-          key={index}
-          className={`px-3 py-2 rounded font-medium text-sm ${
-            activeRound === index ? "bg-sky-500 text-white" : "bg-white hover:bg-gray-100"
-          }`}
-          onClick={() => {
-            setActiveRound(index);
-            setShowLeaderboard(false);
-          }}
-        >
-          {round}
-        </button>
-      ))}
-    </div>
+const TabNav = ({ activeTab, setActiveTab }) => (
+  <div className="flex bg-gray-200 rounded-lg p-1 gap-1">
+    {TABS.map((tab) => (
+      <button
+        key={tab}
+        className={`flex-1 px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+          activeTab === tab
+            ? "bg-sky-500 text-white shadow-sm"
+            : "text-gray-600 hover:bg-gray-100"
+        }`}
+        onClick={() => setActiveTab(tab)}
+      >
+        {tab}
+      </button>
+    ))}
+  </div>
+);
 
-    <button
-      className={`px-3 py-2 rounded font-medium text-sm bg-gray-100 text-gray-400 cursor-not-allowed`}
-      disabled
-      onClick={() => setShowLeaderboard(!showLeaderboard)}
-    >
-      Leaderboard
-    </button>
-    <button
-      className={`px-3 py-2 rounded font-medium text-sm bg-gray-100 text-gray-400 cursor-not-allowed`}
-      disabled
-      onClick={() => {}}
-    >
-      Blocks
-    </button>
+const RoundSelector = ({ activeRound, setActiveRound }) => (
+  <div className="flex overflow-x-auto bg-gray-200 rounded-lg p-1 gap-1 scrollbar-none">
+    {rounds.map((round, index) => (
+      <button
+        key={index}
+        className={`flex-1 min-w-max whitespace-nowrap px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+          activeRound === index
+            ? "bg-white text-gray-900 shadow-sm"
+            : "text-gray-600 hover:text-gray-900"
+        }`}
+        onClick={() => setActiveRound(index)}
+      >
+        {round}
+      </button>
+    ))}
   </div>
 );
 
 // ── BlocksGrid ────────────────────────────────────────────────────────────────
 
 const BlocksGrid = ({ activeRound }) => {
+  const [heatmapMode, setHeatmapMode, heatmapHydrated] = useLocalStorageState(
+    "blocksHeatmapMode",
+    false
+  );
   const [selectedRow, setSelectedRow] = useState(null);
   const [selectedCol, setSelectedCol] = useState(null);
   const [selectedName, setSelectedName] = useState(null);
+
+  const cellProbability = useMemo(() => {
+    const grid = [];
+    for (let r = 0; r < participants.length; r++) {
+      const row = [];
+      for (let c = 0; c < participants[0].length; c++) {
+        const winD = colNumbers[activeRound][c];
+        const loseD = rowNumbers[activeRound][r];
+        row.push(SQUARE_PCT[`${winD}-${loseD}`] ?? 0);
+      }
+      grid.push(row);
+    }
+    return grid;
+  }, [activeRound]);
 
   const handleCellClick = (rowIndex, colIndex, name) => {
     if (selectedName === name) {
@@ -147,10 +166,26 @@ const BlocksGrid = ({ activeRound }) => {
     <div className="w-full min-w-0 overflow-x-auto shadow-lg bg-white rounded-lg p-2">
       <p className="text-xs text-center text-gray-400 mb-1 font-semibold tracking-wide uppercase">
         Winning score →
+        {heatmapMode && heatmapHydrated && (
+          <span className="block normal-case font-normal text-[10px] text-gray-500 mt-0.5">
+            Cell color = P(win digit, lose digit) from last 5 seasons of D1 results
+          </span>
+        )}
       </p>
       <div className="grid grid-cols-11 gap-px bg-gray-300 w-max min-w-0">
-        {/* Corner */}
-        <div className="bg-gray-200 sticky left-0 z-10 min-w-[2.5rem] min-[480px]:min-w-[4rem]" />
+        {/* Corner — heatmap toggle */}
+        <button
+          type="button"
+          title={heatmapMode ? "Turn off probability heatmap" : "Show probability heatmap"}
+          aria-pressed={heatmapMode}
+          aria-label={heatmapMode ? "Turn off probability heatmap" : "Show probability heatmap"}
+          className={`bg-gray-200 sticky left-0 z-20 min-w-[2.5rem] min-[480px]:min-w-[4rem] min-h-[2rem] min-[480px]:min-h-[3rem] flex flex-col items-center justify-center gap-0.5 text-[9px] min-[480px]:text-[10px] font-bold leading-tight text-gray-600 hover:bg-gray-300 hover:text-gray-900 transition-colors cursor-pointer select-none border-0 p-0.5`}
+          onClick={() => setHeatmapMode(!heatmapMode)}
+        >
+          <span className="text-[11px] min-[480px]:text-sm" aria-hidden>
+            {heatmapMode ? "🔥" : "🔥"}
+          </span>
+        </button>
 
         {/* Column headers */}
         {colNumbers[activeRound].map((num, colIndex) => (
@@ -173,9 +208,9 @@ const BlocksGrid = ({ activeRound }) => {
           <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
-className={`p-1 sm:p-3 text-center font-bold text-xs sm:text-xl sticky left-0 z-10 cursor-pointer select-none min-w-[2.5rem] min-[480px]:min-w-[4rem] ${
-              selectedRow === rowIndex && !selectedName ? "bg-sky-500 text-white" : "bg-gray-200"
-            }`}
+              className={`p-1 sm:p-3 text-center font-bold text-xs sm:text-xl sticky left-0 z-10 cursor-pointer select-none min-w-[2.5rem] min-[480px]:min-w-[4rem] ${
+                selectedRow === rowIndex && !selectedName ? "bg-sky-500 text-white" : "bg-gray-200"
+              }`}
               onClick={() => {
                 setSelectedName(null);
                 setSelectedRow(selectedRow === rowIndex ? null : rowIndex);
@@ -185,17 +220,43 @@ className={`p-1 sm:p-3 text-center font-bold text-xs sm:text-xl sticky left-0 z-
             </div>
 
             {/* Cells */}
-            {row.map((name, colIndex) => (
-              <div
-                key={`cell-${rowIndex}-${colIndex}`}
-                className={`p-1 sm:p-3 border border-gray-100 text-center text-xs sm:text-sm w-12 min-[480px]:w-16 sm:w-28 cursor-pointer select-none transition-colors ${
-                  cellClass(rowIndex, colIndex, name)
-                }`}
-                onClick={() => handleCellClick(rowIndex, colIndex, name)}
-              >
-                {name}
-              </div>
-            ))}
+            {row.map((name, colIndex) => {
+              const p = cellProbability[rowIndex][colIndex];
+              const t = normalizePct(p);
+              const isNameSel = selectedName === name;
+              const isCellSel =
+                selectedRow === rowIndex && selectedCol === colIndex && !selectedName;
+              const showHeat = heatmapMode && heatmapHydrated;
+              const heatStyle =
+                showHeat && !isNameSel ? heatmapBackground(t) : undefined;
+              const stateClass = showHeat
+                ? isNameSel
+                  ? "bg-sky-500 text-white"
+                  : isCellSel
+                    ? "text-gray-900 ring-2 ring-sky-600 ring-inset z-[1]"
+                    : "text-gray-900"
+                : cellClass(rowIndex, colIndex, name);
+
+              return (
+                <div
+                  key={`cell-${rowIndex}-${colIndex}`}
+                  style={heatStyle}
+                  className={`p-1 sm:p-3 border border-gray-100 text-center text-xs sm:text-sm w-12 min-[480px]:w-16 sm:w-28 cursor-pointer select-none transition-[background-color,background-image,color,box-shadow] ${stateClass}`}
+                  onClick={() => handleCellClick(rowIndex, colIndex, name)}
+                >
+                  <span className="block font-medium">{name}</span>
+                  {showHeat && (
+                    <span
+                      className={`block text-[10px] min-[480px]:text-xs font-semibold tabular-nums mt-0.5 ${
+                        isNameSel ? "text-white/90" : "text-gray-700/90"
+                      }`}
+                    >
+                      {p.toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -216,7 +277,7 @@ const GamesList = ({ games, isLoading, activeRound }) => {
     return <p className="text-center text-gray-400 py-8">Loading games…</p>;
   }
   if (games.length === 0) {
-    return <p className="text-center text-gray-400 py-8">No games this round.</p>;
+    return <p className="text-center text-gray-400 py-8">You can't win games that haven't been scheduled.</p>;
   }
 
   return (
@@ -293,10 +354,11 @@ const SquarePool = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [activeRound, setActiveRound] = useLocalStorageState("activeRound", currentRound);
-  const [showLeaderboard, setShowLeaderboard] = useLocalStorageState("leaderboard", false);
-  const [showGrid, setShowGrid] = useLocalStorageState("grid", true);
+  const [activeTab, setActiveTab] = useLocalStorageState("activeTab", "Scores");
 
   useEffect(() => {
+    if (activeTab === "Leaderboard") return;
+
     const controller = new AbortController();
 
     const fetchGames = async () => {
@@ -319,24 +381,34 @@ const SquarePool = () => {
 
     fetchGames();
     return () => controller.abort();
-  }, [activeRound]);
+  }, [activeRound, activeTab]);
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-hidden p-3 sm:p-6 flex flex-col gap-4 box-border">
-      <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-center break-words">
-        March Madness Blocks 2026
-      </h1>
-      <RoundNav
-        activeRound={activeRound}
-        setActiveRound={setActiveRound}
-        showLeaderboard={showLeaderboard}
-        setShowLeaderboard={setShowLeaderboard}
-        showGrid={showGrid}
-        setShowGrid={setShowGrid}
-      />
-      {showLeaderboard && <Board />}
-      {showGrid && <BlocksGrid activeRound={activeRound} />}
-      {/* <GamesList games={games} isLoading={isLoading} activeRound={activeRound} /> */}
+    <div className="w-full p-3 sm:p-6 flex flex-col gap-4 box-border overflow-hidden">
+      <div className="text-center">
+        <h1 className="text-lg sm:text-2xl md:text-3xl font-extrabold tracking-tight break-words">
+          <span className="text-sky-500">March Madness</span>{" "}
+          <span className="text-gray-900">Blocks 2026</span>
+        </h1>
+        {/* <p className="text-xs sm:text-sm text-gray-400 font-medium tracking-wide mt-0.5">2026 Tournament</p> */}
+      </div>
+      <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {activeTab === "Scores" && (
+        <>
+          <RoundSelector activeRound={activeRound} setActiveRound={setActiveRound} />
+          <GamesList games={games} isLoading={isLoading} activeRound={activeRound} />
+        </>
+      )}
+
+      {activeTab === "Blocks" && (
+        <>
+          <RoundSelector activeRound={activeRound} setActiveRound={setActiveRound} />
+          <BlocksGrid activeRound={activeRound} />
+        </>
+      )}
+
+      {activeTab === "Leaderboard" && <Board />}
     </div>
   );
 };

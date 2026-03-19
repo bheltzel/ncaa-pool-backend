@@ -26,9 +26,6 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 0; /* allow shrinking so mobile viewport isn't forced wide */
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
@@ -63,6 +60,14 @@ button.selected {
   background-color: #3b82f6; /* Tailwind blue-500 */
   color: white;
   border-color: #3b82f6;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 @media (prefers-color-scheme: light) {

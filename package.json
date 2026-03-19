@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --experimental-test-module-mocks --test tests/*.test.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
