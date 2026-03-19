@@ -45,7 +45,7 @@ const formatTime = (timestamp) =>
 
 const getGameClock = (game) => {
   if (!game.time_remaining || game.time_remaining === "00:00:00") {
-    return game.half === 1 ? "Half" : null;
+    return (game.half === 1 || !game.half) ? "Half" : null;
   }
   return `${game.half}H ${game.time_remaining.slice(0, 5)}`;
 };
