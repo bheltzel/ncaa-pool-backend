@@ -18,6 +18,28 @@ function parseHalf(currentPeriod) {
   return null;
 }
 
+function teamLabel(t) {
+  return t?.nameShort ?? t?.name ?? null;
+}
+
+/** Away → team_a, home → team_b; fills gaps when only one side has isHome, or order [away, home] when neither does. */
+function resolveAwayHome(teams) {
+  if (!teams?.length) return { away: null, home: null };
+  let away = teams.find(t => t.isHome === false);
+  let home = teams.find(t => t.isHome === true);
+  if (teams.length === 2) {
+    if (!away && !home) {
+      away = teams[0];
+      home = teams[1];
+    } else if (!away) {
+      away = teams.find(t => t !== home);
+    } else if (!home) {
+      home = teams.find(t => t !== away);
+    }
+  }
+  return { away, home };
+}
+
 export default async function handler(req, res) {
   try {
     const year = req.query.year || new Date().getFullYear();
@@ -56,12 +78,12 @@ export default async function handler(req, res) {
         ? new Date(game.startTimeEpoch * 1000)
         : null;
 
-      const away = game.teams?.find(t => !t.isHome);
-      const home = game.teams?.find(t => t.isHome);
+      const { away, home } = resolveAwayHome(game.teams);
 
       const game_id = game.contestId;
-      const team_a = away?.nameShort ?? null;
-      const team_b = home?.nameShort ?? null;
+      const team_a = teamLabel(away);
+      const team_b = teamLabel(home);
+      if (!team_a || !team_b) continue;
       const score_a = away?.score ?? null;
       const score_b = home?.score ?? null;
 
@@ -81,7 +103,6 @@ export default async function handler(req, res) {
           ;
       `;
       const values = [game_id, team_a, team_b, game_state, score_a, score_b, contest_clock, start_time, half, round];
-      console.log(values);
       await sql(insertQuery, values);
     }
 
